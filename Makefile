@@ -1,16 +1,19 @@
 CC:=cc
-CFLAGS:=-g -Wall
-LFLAGS:=-Iinclude -g -Wall
+CFLAGS:=-Wall
+LFLAGS:=-Iinclude
+
+ifdef debug
+	CFLAGS+=-g
+	LFLAGS+=-g
+endif
 
 src:=$(addprefix src/, $(shell ls src))
 obj:=$(src:.c=.o)
 
-.PHONY: all procd mostlyclean clean
+.PHONY: all mostlyclean clean
 
-all: bin/procd
-
-bin/procd: ${obj}
-	${CC} ${CFLAGS} ${obj} -o $@
+all: ${obj}
+	${CC} ${CFLAGS} $^ -o bin/procd
 
 %.o: %.c
 	${CC} ${LFLAGS} -c $< -o $@
