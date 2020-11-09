@@ -12,11 +12,9 @@ enum {
 } typedef strategy_t;
 
 struct {
-  regex_t **pattern;
+  regex_t *pattern;
 
-  strategy_t match;
-
-  int min_prune;
+  strategy_t strategy;
 } typedef conf_t;
 
 /**
