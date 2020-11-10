@@ -15,6 +15,8 @@ struct {
   regex_t *pattern;
 
   strategy_t strategy;
+
+  FILE *log_file;
 } typedef conf_t;
 
 /**

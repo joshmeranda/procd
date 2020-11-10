@@ -1,14 +1,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
+#include <syslog.h>
+#include <sys/stat.h>
+
 
 #include <linux/cn_proc.h>
 #include <linux/connector.h>
 #include <linux/netlink.h>
 
 #include <sys/socket.h>
-#include <fcntl.h>
-#include <bits/fcntl-linux.h>
 #include <libnet.h>
 
 #include "procd.h"
@@ -29,76 +31,31 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 #define BUFF_SIZE (max(max(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE), 1024))
 #define MIN_RECV_SIZE (min(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE))
 
-// todo: needed?
-//#define PROC_CN_MCAST_LISTEN (1)
-//#define PROC_CN_MCAST_IGNORE (2)
-
 void handle_msg (struct cn_msg *cn_hdr) {
   // todo: replace '1024' with limits from limits.h (`man limits.h`)
-  char cmdline[1024], fname1[1024], ids[1024], fname2[1024], buf[1024];
-  int r = 0, fd, i;
-  FILE *f = NULL;
+  char proc_cwd_symlink[1024], proc_cwd_real[1024], buf[1024];
   struct proc_event *ev = (struct proc_event *)cn_hdr->data;
 
-  snprintf(fname1, sizeof(fname1), "/proc/%d/status", ev->event_data.exec.process_pid);
-  snprintf(fname2, sizeof(fname2), "/proc/%d/cmdline", ev->event_data.exec.process_pid);
+  memset(proc_cwd_symlink, 0, sizeof(proc_cwd_symlink));
+  memset(proc_cwd_real, 0, sizeof(proc_cwd_real));
 
-  f = fopen(fname1, "r");
-  fd = open(fname2, O_RDONLY);
-
-  memset(&cmdline, 0, sizeof(cmdline));
-  memset(&ids, 0, sizeof(ids));
-
-  while (f && fgets(buf, sizeof(buf), f) != NULL) {
-    if (strstr(buf, "Uid")) {
-      strtok(buf, "\n");
-      snprintf(ids, sizeof(ids), "%s", buf);
-    }
-  }
-  if (f)
-    fclose(f);
-
-  if (fd > 0) {
-    r = read(fd, cmdline, sizeof(cmdline));
-    close(fd);
-
-    for (i = 0; r > 0 && i < r; ++i) {
-      if (cmdline[i] == 0)
-        cmdline[i] = ' ';
-    }
-  }
-
-  switch(ev->what){
+  switch (ev->what) {
     case PROC_EVENT_FORK:
-      printf("FORK:parent(pid,tgid)=%d,%d\tchild(pid,tgid)=%d,%d\t[%s]\n",
-             ev->event_data.fork.parent_pid,
-             ev->event_data.fork.parent_tgid,
-             ev->event_data.fork.child_pid,
-             ev->event_data.fork.child_tgid, cmdline);
+      snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", ev->event_data.exec.process_pid);
+
+      if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
+        syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+      }
+
+      printf("Found symlink: '%s' -> '%s'\n", proc_cwd_symlink, proc_cwd_real);
       break;
-    case PROC_EVENT_EXEC:
-      printf("EXEC:pid=%d,tgid=%d\t[%s]\t[%s]\n",
-             ev->event_data.exec.process_pid,
-             ev->event_data.exec.process_tgid, ids, cmdline);
-      break;
-    case PROC_EVENT_EXIT:
-      printf("EXIT:pid=%d,%d\texit code=%d\n",
-             ev->event_data.exit.process_pid,
-             ev->event_data.exit.process_tgid,
-             ev->event_data.exit.exit_code);
-      break;
-    case PROC_EVENT_UID:
-      printf("UID:pid=%d,%d ruid=%d,euid=%d\n",
-             ev->event_data.id.process_pid, ev->event_data.id.process_tgid,
-             ev->event_data.id.r.ruid, ev->event_data.id.e.euid);
-      break;
+
     default:
       break;
   }
 }
 
 // todo: partition big boi into smaller bois
-// todo: remove the goto statement
 int init_service() {
   int sk_nl;
   int err;
@@ -107,7 +64,7 @@ int init_service() {
   socklen_t from_nla_len;
 
   char buff[BUFF_SIZE];
-  int retval = -1;
+  int retval = 0;
 
   struct nlmsghdr *nl_hdr;
   struct cn_msg *cn_hdr;
@@ -121,6 +78,7 @@ int init_service() {
     return 0;
   }
 
+  // set stdout buffer strategy to unbuffered for uninterrupted writes
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // establish the connector communicator
@@ -129,6 +87,8 @@ int init_service() {
     perror("socket sk_nl error");
     return retval;
   }
+
+  // create netlink addresses
   my_nla.nl_family = AF_NETLINK;
   my_nla.nl_groups = CN_IDX_PROC;
   my_nla.nl_pid = getpid();
@@ -137,11 +97,14 @@ int init_service() {
   kern_nla.nl_groups = CN_IDX_PROC;
   kern_nla.nl_pid = 1;
 
+  // bin the socket to the connector
   err = bind(sk_nl, (struct sockaddr *)&my_nla, sizeof(my_nla));
   if (err == -1) {
     printf("binding sk_nl error");
-    goto close_and_exit;
+    close(sk_nl);
+    exit(3);
   }
+
   nl_hdr = (struct nlmsghdr *)buff;
   cn_hdr = (struct cn_msg *)NLMSG_DATA(nl_hdr);
   mcop_msg = (enum proc_cn_mcast_op*)&cn_hdr->data[0];
@@ -167,44 +130,54 @@ int init_service() {
   // send the subscription packet
   if (send(sk_nl, nl_hdr, nl_hdr->nlmsg_len, 0) != nl_hdr->nlmsg_len) {
     perror("failed to send proc connector mcast ctl op!\n");
-    goto close_and_exit;
+    retval = 1;
   }
 
   printf("sent\n");
   if (*mcop_msg == PROC_CN_MCAST_IGNORE) {
-    retval = 0;
-    goto close_and_exit;
+    retval = 2;
   }
 
-  // read process events from kernel
-  for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla);
+  openlog("procd", 0, 0);
+
+  // read process events from kernels
+  for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)
+      ; retval == 0  // if an error occurred before loop, it is not entered
       ; memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)) {
     struct nlmsghdr *nlh = (struct nlmsghdr*)buff;
+
     memcpy(&from_nla, &kern_nla, sizeof(from_nla));
     recv_len = recvfrom(sk_nl, buff, BUFF_SIZE, 0,
                         (struct sockaddr*)&from_nla, &from_nla_len);
+
     if (from_nla.nl_pid != 0)
       continue;
+
     if (recv_len < 1)
       continue;
+
     while (NLMSG_OK(nlh, recv_len)) {
       cn_hdr = NLMSG_DATA(nlh);
+
       if (nlh->nlmsg_type == NLMSG_NOOP)
         continue;
+
       if ((nlh->nlmsg_type == NLMSG_ERROR) ||
           (nlh->nlmsg_type == NLMSG_OVERRUN))
         break;
+
       handle_msg(cn_hdr);
+
       if (nlh->nlmsg_type == NLMSG_DONE)
         break;
+
       nlh = NLMSG_NEXT(nlh, recv_len);
     }
   }
-close_and_exit:
+  closelog();
+
   close(sk_nl);
   exit(retval);
-
-  return 0;
 }
 
 /**
