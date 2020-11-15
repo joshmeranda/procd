@@ -1,4 +1,5 @@
 #include <malloc.h>
+#include <regex.h>
 
 #include "procd.h"
 
@@ -12,7 +13,7 @@ int main() {
 
   init_service();
 
-  free(conf.pattern);
+  regfree(conf.pattern);
 
   return 0;
 }

@@ -1,10 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
+#include <regex.h>
 #include <syslog.h>
-#include <sys/stat.h>
-
 
 #include <linux/cn_proc.h>
 #include <linux/connector.h>
@@ -31,7 +29,7 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 #define BUFF_SIZE (max(max(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE), 1024))
 #define MIN_RECV_SIZE (min(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE))
 
-void handle_msg (struct cn_msg *cn_hdr) {
+static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   // todo: replace '1024' with limits from limits.h (`man limits.h`)
   char proc_cwd_symlink[1024], proc_cwd_real[1024], buf[1024];
   struct proc_event *ev = (struct proc_event *)cn_hdr->data;
@@ -45,9 +43,13 @@ void handle_msg (struct cn_msg *cn_hdr) {
 
       if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
         syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+        fprintf(stderr, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+      }
+//      printf("Found symlink: '%s' -> '%s'\n", proc_cwd_symlink, proc_cwd_real);
+      if (regexec(conf->pattern, proc_cwd_real, 0, NULL, REG_NOTBOL | REG_NOTEOL) == 0) {
+        printf("Matched path '%s'", proc_cwd_real);
       }
 
-      printf("Found symlink: '%s' -> '%s'\n", proc_cwd_symlink, proc_cwd_real);
       break;
 
     default:
@@ -56,7 +58,7 @@ void handle_msg (struct cn_msg *cn_hdr) {
 }
 
 // todo: partition big boi into smaller bois
-int init_service() {
+int init_service(const conf_t *conf) {
   int sk_nl;
   int err;
 
@@ -166,7 +168,7 @@ int init_service() {
           (nlh->nlmsg_type == NLMSG_OVERRUN))
         break;
 
-      handle_msg(cn_hdr);
+      handle_msg(cn_hdr, conf);
 
       if (nlh->nlmsg_type == NLMSG_DONE)
         break;
@@ -194,16 +196,28 @@ int init_service() {
  *     merge_patterns("/usr/bin/.* /usr/local/.*") -> /usr/bin/.*|/usr/local/.*
  *     merge_patterns("/path with spaces") -> /path|with|spaces
  *
+ * todo: double spaces would result in matching an empty string path
+ *
  * @param pattern_line The string with space separated regex patterns.
  * @return 0 if successful, -1 if not.
  */
-static int merge_patterns(regex_t *regex, char *pattern_line) {
-  for (char *c = pattern_line; *c != 0; c++) {
+static int merge_patterns(regex_t *regex, const char *pattern_line) {
+  char *pattern = malloc(strlen(pattern_line) + 1);
+
+  strcpy(pattern, pattern_line);
+
+  for (char *c = pattern; *c != 0; c++) {
     if (*c == ' ')
       *c = '|';
   }
 
-  return regcomp(regex, pattern_line, REG_EXTENDED) == 0 ? 0 : -1;
+  printf("%s\n", pattern);
+
+  int retval = regcomp(regex, pattern, 0) == 0 ? 0 : -1;
+
+  free(pattern);
+
+  return retval;
 }
 
 int parse_conf(conf_t *conf, char *path) {
@@ -229,10 +243,10 @@ int parse_conf(conf_t *conf, char *path) {
 
     // todo: look for better methods
     char key[100], val[100];
-    memset(key, 0, 100);
-    memset(val, 0, 100);
+    memset(key, 0, sizeof(key));
+    memset(val, 0, sizeof(val));
 
-    sscanf(line, "%s = %s\n", key, val);
+    sscanf(line, "%s = %[^\n]", key, val);
 
     // todo: free space from above before exit
     if (strcmp("strategy", key) == 0) {
@@ -249,6 +263,7 @@ int parse_conf(conf_t *conf, char *path) {
     } else if (strcmp("patterns", key) == 0) {
       // merge and compile regex
       int e;
+
       if ((e = merge_patterns(conf->pattern, val)) != 0) {
         fprintf(stderr, "Regex compilation failed with error code %d", e);
         retval = -1;
