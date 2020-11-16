@@ -1,0 +1,8 @@
+[Unit]
+Description="Proc Dragon"
+ConditionPathExists="/etc/procd.conf
+
+[Service]
+Type=exec
+Restart=always
+ExecStart=/usr/bin/procd
