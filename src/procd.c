@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -30,11 +31,11 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 #define MIN_RECV_SIZE (min(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE))
 
 static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
-  // todo: replace '1024' with limits from limits.h (`man limits.h`)
-  pid_t pid = -1;
-  char proc_cwd_symlink[1024], proc_cwd_real[1024], buf[1024];
+  pid_t pid = 0;
+  char cmdline[_POSIX_ARG_MAX], proc_cwd_symlink[PATH_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX], buf[1024];
   struct proc_event *ev = (struct proc_event *)cn_hdr->data;
 
+  memset(cmdline, 0, sizeof(cmdline));
   memset(proc_cwd_symlink, 0, sizeof(proc_cwd_symlink));
   memset(proc_cwd_real, 0, sizeof(proc_cwd_real));
 
@@ -55,6 +56,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
 
     if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
       syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+      return;
     }
 
     int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
