@@ -10,6 +10,7 @@
 #include <linux/netlink.h>
 
 #include <sys/socket.h>
+
 #include <libnet.h>
 
 #include "procd.h"
@@ -25,48 +26,68 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 #define RECV_MESSAGE_SIZE    (NLMSG_SPACE(RECV_MESSAGE_LEN))
 
 #define max(x,y) ((y)<(x)?(x):(y))
-#define min(x,y) ((y)>(x)?(x):(y))
-
 #define BUFF_SIZE (max(max(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE), 1024))
-#define MIN_RECV_SIZE (min(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE))
 
+// todo: show what user launch the process
+//   would require iterating over /proc/<pid>/environ to find the value for USER
+// todo: partition big boi into smaller bois
 static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
-  pid_t pid = 0;
-  char cmdline[_POSIX_ARG_MAX], proc_cwd_symlink[PATH_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX], buf[1024];
-  struct proc_event *ev = (struct proc_event *)cn_hdr->data;
+  // retrieve the pid of the process events
+  pid_t pid;
+  struct proc_event *proc_event = (struct proc_event *)cn_hdr->data;
 
+  switch (proc_event->what) {
+    case PROC_EVENT_FORK:
+      pid = proc_event->event_data.fork.child_pid;
+      break;
+    case PROC_EVENT_EXEC:
+      pid = proc_event->event_data.exec.process_pid;
+      break;
+    default:
+      return; // do nothing for other process events
+  }
+
+  char cmdline_path[PATH_MAX], cmdline[_POSIX_ARG_MAX],
+       proc_cwd_symlink[PATH_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX];
+
+  memset(cmdline_path, 0, sizeof(cmdline_path));
   memset(cmdline, 0, sizeof(cmdline));
   memset(proc_cwd_symlink, 0, sizeof(proc_cwd_symlink));
   memset(proc_cwd_real, 0, sizeof(proc_cwd_real));
 
-  switch (ev->what) {
-    case PROC_EVENT_FORK:
-      pid = ev->event_data.fork.child_pid;
-      break;
-    case PROC_EVENT_EXEC:
-      pid = ev->event_data.exec.process_pid;
-      break;
-    default:
-      break;
+  snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", pid);
+  snprintf(cmdline_path, sizeof(cmdline), "/proc/%d/cmdline", pid);
+
+  // find the command line which launched the process
+  FILE *stream = fopen(cmdline_path, "r");
+
+  if (stream != NULL) {
+    unsigned long n = fread(cmdline, 1, sizeof(cmdline),stream);
+    fclose(stream);
+
+    // replace null characters with spaces for more human readable output
+    for (int i = 0; i < n - 1; i++) {
+      if (cmdline[i] == 0) {
+        cmdline[i] = ' ';
+      }
+    }
   }
 
-  // kill the target process
-  if (pid != -1) {
-    snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", pid);
+  // find the path to the process's cwd
+  // if the cwd cannot be determined no further actions can be taken
+  if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
+    syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+    return;
+  }
 
-    if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
-      syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
-      return;
-    }
+  // kill the target process if it matches a deny or does not match an allow rule
+  int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
 
-    int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
+  if (conf->strategy == ALLOW && path_match != 0
+      || conf->strategy == DENY && path_match == 0) {
 
-    if (conf->strategy == ALLOW && path_match != 0
-        || conf->strategy == DENY && path_match == 0) {
-
-      kill(pid, SIGKILL);
-      syslog(LOG_AUTH, "Process %d started from '%s'", pid, proc_cwd_real);
-    }
+    kill(pid, SIGKILL);
+    syslog(LOG_AUTH, "Killed process %d started from '%s': '%s'", pid, proc_cwd_real, cmdline);
   }
 }
 
