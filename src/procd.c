@@ -45,9 +45,11 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
         syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
         fprintf(stderr, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
       }
-//      printf("Found symlink: '%s' -> '%s'\n", proc_cwd_symlink, proc_cwd_real);
-      if (regexec(conf->pattern, proc_cwd_real, 0, NULL, REG_NOTBOL | REG_NOTEOL) == 0) {
-        printf("Matched path '%s'", proc_cwd_real);
+
+      if (regexec(conf->pattern, proc_cwd_real, 0, NULL, 0) == 0) {
+        printf("  Matched path '%s'\n", proc_cwd_real);
+      } else {
+        printf("Unmatched path '%s'\n", proc_cwd_real);
       }
 
       break;
@@ -211,12 +213,9 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
       *c = '|';
   }
 
-  printf("%s\n", pattern);
-
-  int retval = regcomp(regex, pattern, 0) == 0 ? 0 : -1;
+  int retval = regcomp(regex, pattern, REG_EXTENDED) == 0 ? 0 : -1;
 
   free(pattern);
-
   return retval;
 }
 
@@ -279,6 +278,7 @@ int parse_conf(conf_t *conf, char *path) {
     }
   }
 
+  fclose(stream);
   free(line);
 
   return retval;

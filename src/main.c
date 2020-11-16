@@ -11,7 +11,7 @@ int main() {
     return 1;
   }
 
-  init_service();
+  init_service(&conf);
 
   regfree(conf.pattern);
 
