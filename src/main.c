@@ -3,6 +3,8 @@
 
 #include "procd.h"
 
+
+// todo: implement basic command line interface
 int main() {
   conf_t conf;
   conf.pattern = malloc(sizeof(regex_t));
