@@ -31,6 +31,7 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 
 static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   // todo: replace '1024' with limits from limits.h (`man limits.h`)
+  pid_t pid = -1;
   char proc_cwd_symlink[1024], proc_cwd_real[1024], buf[1024];
   struct proc_event *ev = (struct proc_event *)cn_hdr->data;
 
@@ -39,25 +40,31 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
 
   switch (ev->what) {
     case PROC_EVENT_FORK:
-      snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", ev->event_data.fork.child_pid);
-
-      if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
-        syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
-      }
-
-      int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
-
-      if (conf->strategy == ALLOW && path_match != 0
-          || conf->strategy == DENY && path_match == 0) {
-
-        kill(ev->event_data.fork.child_pid, SIGKILL);
-        syslog(LOG_AUTH, "Process %d started from '%s'", ev->event_data.fork.child_pid, proc_cwd_real);
-      }
-
+      pid = ev->event_data.fork.child_pid;
       break;
-
+    case PROC_EVENT_EXEC:
+      pid = ev->event_data.exec.process_pid;
+      break;
     default:
       break;
+  }
+
+  // kill the target process
+  if (pid != -1) {
+    snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", pid);
+
+    if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
+      syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+    }
+
+    int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
+
+    if (conf->strategy == ALLOW && path_match != 0
+        || conf->strategy == DENY && path_match == 0) {
+
+      kill(pid, SIGKILL);
+      syslog(LOG_AUTH, "Process %d started from '%s'", pid, proc_cwd_real);
+    }
   }
 }
 
