@@ -39,11 +39,10 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
 
   switch (ev->what) {
     case PROC_EVENT_FORK:
-      snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", ev->event_data.exec.process_pid);
+      snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", ev->event_data.fork.child_pid);
 
       if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
         syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
-        fprintf(stderr, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
       }
 
       int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
@@ -52,6 +51,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
           || conf->strategy == DENY && path_match == 0) {
 
         kill(ev->event_data.fork.child_pid, SIGKILL);
+        syslog(LOG_AUTH, "Process %d started from '%s'", ev->event_data.fork.child_pid, proc_cwd_real);
       }
 
       break;
@@ -234,22 +234,20 @@ int parse_conf(conf_t *conf, char *path) {
   size_t len = 0;
   int retval = 0;
 
-  // todo: remember to free the line
   // todo: make this config parsing far more dynamic
   //     leaving very minimal until real functionality is completed
   //     allow inline comments & multiline assignment & ...
+  char key[100], val[100];
+
   while (getline(&line, &len, stream) != -1) {
-    // skip empty lines and comments
+    // skip comments and empty lines
     if (line[0] == '#' || line[0] == '\n') continue;
 
-    // todo: look for better methods
-    char key[100], val[100];
     memset(key, 0, sizeof(key));
     memset(val, 0, sizeof(val));
 
     sscanf(line, "%s = %[^\n]", key, val);
 
-    // todo: free space from above before exit
     if (strcmp("strategy", key) == 0) {
       // match key value against support strategies
       if (strcmp("allow", val) == 0)
