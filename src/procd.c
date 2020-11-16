@@ -46,10 +46,12 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
         fprintf(stderr, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
       }
 
-      if (regexec(conf->pattern, proc_cwd_real, 0, NULL, 0) == 0) {
-        printf("  Matched path '%s'\n", proc_cwd_real);
-      } else {
-        printf("Unmatched path '%s'\n", proc_cwd_real);
+      int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
+
+      if (conf->strategy == ALLOW && path_match != 0
+          || conf->strategy == DENY && path_match == 0) {
+
+        kill(ev->event_data.fork.child_pid, SIGKILL);
       }
 
       break;
