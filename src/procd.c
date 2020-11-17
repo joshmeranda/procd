@@ -62,10 +62,12 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   FILE *stream = fopen(cmdline_path, "r");
 
   if (stream != NULL) {
-    unsigned long n = fread(cmdline, 1, sizeof(cmdline),stream);
+    // fread will receive at most _POSIX_ARG_MAX which is an integer
+    int n = (int) fread(cmdline, 1, sizeof(cmdline), stream);
     fclose(stream);
 
     // replace null characters with spaces for more human readable output
+    // todo: overflow
     for (int i = 0; i < n - 1; i++) {
       if (cmdline[i] == 0) {
         cmdline[i] = ' ';
@@ -76,7 +78,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   // find the path to the process's cwd
   // if the cwd cannot be determined no further actions can be taken
   if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
-    syslog(LOG_ERR, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+    syslog(LOG_NOTICE, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
     return;
   }
 
@@ -87,7 +89,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
       || conf->strategy == DENY && path_match == 0) {
 
     kill(pid, SIGKILL);
-    syslog(LOG_AUTH, "Killed process %d started from '%s': '%s'", pid, proc_cwd_real, cmdline);
+    syslog(LOG_WARNING, "Killed process %d started from '%s': '%s'", pid, proc_cwd_real, cmdline);
   }
 }
 
@@ -108,9 +110,11 @@ int init_service(const conf_t *conf) {
 
   size_t recv_len = 0;
 
+  openlog("procd", 0, LOG_AUTHPRIV);
+
   // kernel connector access requires root level permissions
   if (getuid() != 0) {
-    printf("Only root can start/stop the fork connector\n");
+    syslog(LOG_CRIT, "Only root can start/stop the fork connector\n");
     return 0;
   }
 
@@ -136,7 +140,7 @@ int init_service(const conf_t *conf) {
   // bin the socket to the connector
   err = bind(sk_nl, (struct sockaddr *)&my_nla, sizeof(my_nla));
   if (err == -1) {
-    printf("binding sk_nl error");
+    syslog(LOG_CRIT, "binding sk_nl error");
     close(sk_nl);
     exit(3);
   }
@@ -145,7 +149,7 @@ int init_service(const conf_t *conf) {
   cn_hdr = (struct cn_msg *)NLMSG_DATA(nl_hdr);
   mcop_msg = (enum proc_cn_mcast_op*)&cn_hdr->data[0];
 
-  printf("sending proc connector: PROC_CN_MCAST_LISTEN... ");
+  syslog(LOG_INFO, "sending proc connector: PROC_CN_MCAST_LISTEN... ");
   memset(buff, 0, sizeof(buff));
   *mcop_msg = PROC_CN_MCAST_LISTEN;
 
@@ -165,16 +169,13 @@ int init_service(const conf_t *conf) {
 
   // send the subscription packet
   if (send(sk_nl, nl_hdr, nl_hdr->nlmsg_len, 0) != nl_hdr->nlmsg_len) {
-    perror("failed to send proc connector mcast ctl op!\n");
+    syslog(LOG_CRIT, "failed to send proc connector mcast ctl op!\n");
     retval = 1;
   }
 
-  printf("sent\n");
-  if (*mcop_msg == PROC_CN_MCAST_IGNORE) {
+ if (*mcop_msg == PROC_CN_MCAST_IGNORE) {
     retval = 2;
   }
-
-  openlog("procd", 0, 0);
 
   // read process events from kernels
   for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)
@@ -251,6 +252,7 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
   return retval;
 }
 
+// todo: warn of bad config
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
 

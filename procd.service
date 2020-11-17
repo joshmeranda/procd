@@ -1,6 +1,6 @@
 [Unit]
-Description="Proc Dragon"
-ConditionPathExists="/etc/procd.conf
+Description="Process Dragon"
+ConditionPathExists=/etc/procd.conf
 
 [Service]
 Type=exec

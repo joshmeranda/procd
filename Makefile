@@ -1,21 +1,30 @@
+# compiler info
 CC:=cc
 CFLAGS:=-Wall
 LFLAGS:=-Iinclude
-
-PROG=procd
-
-INSTALL_DIR=/usr/bin
-INSTALL_BIN=${INSTALL_DIR}/${PROG}
-
-BIN=./bin/${PROG}
-
-VERSION=0.1-rc
-TAR=procd-${VERSION}.gz.tar
 
 ifdef debug
 	CFLAGS+=-g
 	LFLAGS+=-g
 endif
+
+# generic common names
+PROG_NAME=procd
+UNIT_NAME=${PROG_NAME}.service
+
+# system installation destinations
+INSTALL_DIR=/usr/bin
+INSTALL_BIN=${INSTALL_DIR}/${PROG_NAME}
+
+SERVICE_INSTALL=/etc/systemd/system
+SERVICE_INSTALL_UNIT=${SERVICE_INSTALL}/${UNIT_NAME}
+
+# local targets
+BIN=bin/${PROG_NAME}
+
+# packaging info / targets
+VERSION=0.1-rc
+TAR=procd-${VERSION}.gz.tar
 
 src:=$(addprefix src/, $(shell ls src))
 obj:=$(src:.c=.o)
@@ -41,8 +50,13 @@ dist: all
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Install and uninstall                                                       #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+LN=ln --symbolic --verbose --force
+RM=rm --recursive --force --verbose
+
 install: ${BIN}
-	cp --update --verbose $< ${INSTALL_BIN}
+	${LN} $(realpath $<) ${INSTALL_BIN}
+	${LN} $(realpath ${UNIT_NAME}) ${SERVICE_INSTALL_UNIT}
+	cp --update --verbose examples/procd.conf /etc
 
 uninstall:
 	rm --recursive --force --verbose ${INSTALL_BIN}
@@ -51,7 +65,7 @@ uninstall:
 # Clean work tree of compiled / generated files                               #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 mostlyclean:
-	rm --recursive --force --verbose ${obj} vgcore.* massif.*
+	 ${RM} ${obj} vgcore.* massif.*
 
 clean: mostlyclean
-	rm --recursive --force --verbose bin/procd ${TAR}
+	${RM} bin/procd ${TAR}
