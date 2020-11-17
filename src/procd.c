@@ -28,6 +28,12 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 #define max(x,y) ((y)<(x)?(x):(y))
 #define BUFF_SIZE (max(max(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE), 1024))
 
+/**
+ * Handles any interrupts received in the init_service loop.
+ */
+int received = 0;
+void handler(int _) { received = 1; }
+
 // todo: show what user launch the process
 //   would require iterating over /proc/<pid>/environ to find the value for USER
 // todo: partition big boi into smaller bois
@@ -170,16 +176,27 @@ int init_service(const conf_t *conf) {
   // send the subscription packet
   if (send(sk_nl, nl_hdr, nl_hdr->nlmsg_len, 0) != nl_hdr->nlmsg_len) {
     syslog(LOG_CRIT, "failed to send proc connector mcast ctl op!\n");
-    retval = 1;
+    closelog();
+    return 1;
   }
 
- if (*mcop_msg == PROC_CN_MCAST_IGNORE) {
-    retval = 2;
+  if (*mcop_msg == PROC_CN_MCAST_IGNORE) {
+    closelog();
+    close(sk_nl);
+    return 1;
   }
+
+  // handle any abort signals which may occur in the loop
+  signal(SIGINT, handler);
+  signal(SIGILL, handler);
+  signal(SIGABRT, handler);
+  signal(SIGFPE, handler);
+  signal(SIGSEGV, handler);
+  signal(SIGTERM, handler);
 
   // read process events from kernels
   for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)
-      ; retval == 0  // if an error occurred before loop, it is not entered
+      ; received
       ; memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)) {
     struct nlmsghdr *nlh = (struct nlmsghdr*)buff;
 
@@ -211,10 +228,10 @@ int init_service(const conf_t *conf) {
       nlh = NLMSG_NEXT(nlh, recv_len);
     }
   }
-  closelog();
 
+  closelog();
   close(sk_nl);
-  exit(retval);
+  return retval;
 }
 
 /**
