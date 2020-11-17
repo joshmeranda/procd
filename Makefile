@@ -23,7 +23,7 @@ SERVICE_INSTALL_UNIT=${SERVICE_INSTALL}/${UNIT_NAME}
 BIN=bin/${PROG_NAME}
 
 # packaging info / targets
-VERSION=0.1-rc
+VERSION=0.0.1-rc
 TAR=procd-${VERSION}.gz.tar
 
 src:=$(addprefix src/, $(shell ls src))
@@ -59,7 +59,7 @@ install: ${BIN}
 	cp --update --verbose examples/procd.conf /etc
 
 uninstall:
-	rm --recursive --force --verbose ${INSTALL_BIN}
+	${RM} ${INSTALL_BIN} ${SERVICE_INSTALL_UNIT}
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Clean work tree of compiled / generated files                               #

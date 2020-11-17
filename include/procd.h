@@ -22,9 +22,10 @@ struct {
 /**
  * Initialize the new service.
  *
+ * @param conf
  * @return 0 if successful, -1 if not.
  */
-int init_service();
+int init_service(const conf_t *conf);
 
 /**
  * Parse a configuration file to govern how the service should behave.

@@ -1,5 +1,5 @@
 [Unit]
-Description="Process Dragon"
+Description="Procd"
 ConditionPathExists=/etc/procd.conf
 
 [Service]

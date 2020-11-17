@@ -253,6 +253,7 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
 }
 
 // todo: warn of bad config
+// todo: default values?
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
 
