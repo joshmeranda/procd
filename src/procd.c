@@ -14,6 +14,7 @@
 #include <libnet.h>
 
 #include "procd.h"
+#include "procfs.h"
 
 #define SEND_MESSAGE_LEN (NLMSG_LENGTH(sizeof(struct cn_msg) + \
 				       sizeof(enum proc_cn_mcast_op)))
@@ -51,38 +52,20 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
       return; // do nothing for other process events
   }
 
-  char cmdline_path[PATH_MAX], cmdline[_POSIX_ARG_MAX],
-       proc_cwd_symlink[PATH_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX];
+  char cmdline[_POSIX_ARG_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX];
 
-  memset(cmdline_path, 0, sizeof(cmdline_path));
   memset(cmdline, 0, sizeof(cmdline));
-  memset(proc_cwd_symlink, 0, sizeof(proc_cwd_symlink));
   memset(proc_cwd_real, 0, sizeof(proc_cwd_real));
-
-  snprintf(proc_cwd_symlink, sizeof(proc_cwd_symlink), "/proc/%d/cwd", pid);
-  snprintf(cmdline_path, sizeof(cmdline), "/proc/%d/cmdline", pid);
-
-  // find the command line which launched the process
-  FILE *stream = fopen(cmdline_path, "r");
-
-  if (stream != NULL) {
-    // fread will receive at most _POSIX_ARG_MAX which is an integer
-    int n = (int) fread(cmdline, 1, sizeof(cmdline), stream);
-    fclose(stream);
-
-    // replace null characters with spaces for more human readable output
-    for (int i = 0; i < n - 1; i++) {
-      if (cmdline[i] == 0) {
-        cmdline[i] = ' ';
-      }
-    }
-  }
 
   // find the path to the process's cwd
   // if the cwd cannot be determined no further actions can be taken
-  if (readlink(proc_cwd_symlink, proc_cwd_real, sizeof(proc_cwd_real)) == -1) {
-    syslog(LOG_NOTICE, "Could not retrieve reference from symbolic link at '%s'", proc_cwd_symlink);
+  if (read_cwd(pid, proc_cwd_real) == -1) {
     return;
+  }
+
+  // find the command line arguments that spawned the process if possible
+  if (read_cmdline(pid, cmdline) == -1) {
+    syslog(LOG_DEBUG, "Could not determine the command for pid '%d'", pid);
   }
 
   // kill the target process if it matches a deny or does not match an allow rule

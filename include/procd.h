@@ -36,4 +36,4 @@ int init_service(const conf_t *conf);
  */
 int parse_conf(conf_t *conf, char *path);
 
-#endif //PROCD_PROCD_H
+#endif // PROCD_PROCD_H
