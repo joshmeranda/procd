@@ -15,8 +15,6 @@
 
 #include "procd.h"
 
-static void on_sigint(int _) { /* todo: not yet implemented */ }
-
 #define SEND_MESSAGE_LEN (NLMSG_LENGTH(sizeof(struct cn_msg) + \
 				       sizeof(enum proc_cn_mcast_op)))
 #define RECV_MESSAGE_LEN (NLMSG_LENGTH(sizeof(struct cn_msg) + \
@@ -31,10 +29,10 @@ static void on_sigint(int _) { /* todo: not yet implemented */ }
 /**
  * Handles any interrupts received in the init_service loop.
  */
-int received = 0;
-void handler(int _) { received = 1; }
+static int received = 0;
+static void handler(int _) { received = 1; }
 
-// todo: show what user launch the process
+// todo: show what user launched the process
 //   would require iterating over /proc/<pid>/environ to find the value for USER
 // todo: partition big boi into smaller bois
 static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
@@ -73,7 +71,6 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
     fclose(stream);
 
     // replace null characters with spaces for more human readable output
-    // todo: overflow
     for (int i = 0; i < n - 1; i++) {
       if (cmdline[i] == 0) {
         cmdline[i] = ' ';
@@ -99,90 +96,63 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   }
 }
 
-// todo: partition big boi into smaller bois
-int init_service(const conf_t *conf) {
-  int sk_nl;
-  int err;
+/**
+ * Bind local port for communication with the connector kernel module.
+ *
+ * @return The file descriptor of the bound socket, or -1 on an error and the
+ *      socket is closed before being returned.
+ */
+static int netlink_sock() {
+  // establish the connector communicator
+  int sock_nl = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
 
-  struct sockaddr_nl my_nla, kern_nla, from_nla;
+  if (sock_nl == -1) {
+    syslog(LOG_CRIT, "Error creating local NETLINK socket");
+    return -1;
+  }
+
+  struct sockaddr_nl addr_nl;
+
+  // create netlink addresses
+  addr_nl.nl_family = AF_NETLINK;
+  addr_nl.nl_groups = CN_IDX_PROC;
+  addr_nl.nl_pid = getpid();
+
+  // bind the socket to the netlink address
+  if (bind(sock_nl, (struct sockaddr *)&addr_nl, sizeof(addr_nl)) == -1) {
+    syslog(LOG_CRIT, "Error binding to NETLINK socket");
+    close(sock_nl);
+    return -1;
+  }
+
+  return sock_nl;
+}
+
+int init_service(const conf_t *conf) {
+  int nl_sock, retval = 0;
+  size_t recv_len = 0;
+
+  struct sockaddr_nl nl_kern_addr, nl_src_addr;
+  struct cn_msg *cn_hdr;
+
   socklen_t from_nla_len;
 
   char buff[BUFF_SIZE];
-  int retval = 0;
-
-  struct nlmsghdr *nl_hdr;
-  struct cn_msg *cn_hdr;
-  enum proc_cn_mcast_op *mcop_msg;
-
-  size_t recv_len = 0;
 
   openlog("procd", 0, LOG_AUTHPRIV);
 
   // kernel connector access requires root level permissions
   if (getuid() != 0) {
     syslog(LOG_CRIT, "Only root can start/stop the fork connector\n");
-    return 0;
+    closelog();
+    return 1;
   }
 
   // set stdout buffer strategy to unbuffered for uninterrupted writes
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  // establish the connector communicator
-  sk_nl = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
-  if (sk_nl == -1) {
-    perror("socket sk_nl error");
-    return retval;
-  }
-
-  // create netlink addresses
-  my_nla.nl_family = AF_NETLINK;
-  my_nla.nl_groups = CN_IDX_PROC;
-  my_nla.nl_pid = getpid();
-
-  kern_nla.nl_family = AF_NETLINK;
-  kern_nla.nl_groups = CN_IDX_PROC;
-  kern_nla.nl_pid = 1;
-
-  // bin the socket to the connector
-  err = bind(sk_nl, (struct sockaddr *)&my_nla, sizeof(my_nla));
-  if (err == -1) {
-    syslog(LOG_CRIT, "binding sk_nl error");
-    close(sk_nl);
-    exit(3);
-  }
-
-  nl_hdr = (struct nlmsghdr *)buff;
-  cn_hdr = (struct cn_msg *)NLMSG_DATA(nl_hdr);
-  mcop_msg = (enum proc_cn_mcast_op*)&cn_hdr->data[0];
-
-  syslog(LOG_INFO, "sending proc connector: PROC_CN_MCAST_LISTEN... ");
-  memset(buff, 0, sizeof(buff));
-  *mcop_msg = PROC_CN_MCAST_LISTEN;
-
-  // initialize netlink packet header
-  nl_hdr->nlmsg_len = SEND_MESSAGE_LEN;
-  nl_hdr->nlmsg_type = NLMSG_DONE;
-  nl_hdr->nlmsg_flags = 0;
-  nl_hdr->nlmsg_seq = 0;
-  nl_hdr->nlmsg_pid = getpid();
-
-  // initialize connector packet header
-  cn_hdr->id.idx = CN_IDX_PROC;
-  cn_hdr->id.val = CN_VAL_PROC;
-  cn_hdr->seq = 0;
-  cn_hdr->ack = 0;
-  cn_hdr->len = sizeof(enum proc_cn_mcast_op);
-
-  // send the subscription packet
-  if (send(sk_nl, nl_hdr, nl_hdr->nlmsg_len, 0) != nl_hdr->nlmsg_len) {
-    syslog(LOG_CRIT, "failed to send proc connector mcast ctl op!\n");
+  if ((nl_sock = netlink_sock()) == -1) {
     closelog();
-    return 1;
-  }
-
-  if (*mcop_msg == PROC_CN_MCAST_IGNORE) {
-    closelog();
-    close(sk_nl);
     return 1;
   }
 
@@ -194,17 +164,22 @@ int init_service(const conf_t *conf) {
   signal(SIGSEGV, handler);
   signal(SIGTERM, handler);
 
+  // set up address for the process connector in the kernel space
+  nl_kern_addr.nl_family = AF_NETLINK;
+  nl_kern_addr.nl_groups = CN_IDX_PROC;
+  nl_kern_addr.nl_pid = 1;
+
   // read process events from kernels
-  for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)
-      ; received
-      ; memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(from_nla)) {
+  for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(nl_src_addr)
+      ; received == 0
+      ; memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(nl_src_addr)) {
     struct nlmsghdr *nlh = (struct nlmsghdr*)buff;
 
-    memcpy(&from_nla, &kern_nla, sizeof(from_nla));
-    recv_len = recvfrom(sk_nl, buff, BUFF_SIZE, 0,
-                        (struct sockaddr*)&from_nla, &from_nla_len);
+    memcpy(&nl_src_addr, &nl_kern_addr, sizeof(nl_src_addr));
+    recv_len = recvfrom(nl_sock, buff, BUFF_SIZE, 0,
+                        (struct sockaddr*)&nl_src_addr, &from_nla_len);
 
-    if (from_nla.nl_pid != 0)
+    if (nl_src_addr.nl_pid != 0)
       continue;
 
     if (recv_len < 1)
@@ -230,7 +205,8 @@ int init_service(const conf_t *conf) {
   }
 
   closelog();
-  close(sk_nl);
+  close(nl_sock);
+
   return retval;
 }
 
