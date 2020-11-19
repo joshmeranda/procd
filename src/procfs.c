@@ -4,8 +4,16 @@
 
 #include "procfs.h"
 
+/**
+ * Macros for file sizes of specific procfs files, assumes max pid of 2^22 (4194304)
+ * for 7 bytes and will include the null byte.
+ */
+#define PROCFS_MAX_CMDLINE 22       // "/proc/[pid]/cmdline"
+#define PROCFS_MAX_LOGINUID 23      // "/proc/[pid]]/loginuid"
+#define PROCFS_MAX_CWD 18           // "/proc/[pid]]/cwd"
+
 int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
-  char cmdline_path[PATH_MAX];
+  char cmdline_path[PROCFS_MAX_CMDLINE];
 
   sprintf(cmdline_path, "/proc/%d/cmdline", pid);
 
@@ -28,8 +36,8 @@ int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   return n;
 }
 
-int read_user(pid_t pid, char user[LOGIN_NAME_MAX]) {
-  char loginuid_path[PATH_MAX];
+int read_login(pid_t pid, char user[LOGIN_NAME_MAX]) {
+  char loginuid_path[PROCFS_MAX_LOGINUID];
 
   sprintf(loginuid_path, "/proc/%d/loginuid", pid);
 
@@ -51,7 +59,7 @@ int read_user(pid_t pid, char user[LOGIN_NAME_MAX]) {
 }
 
 int read_cwd(pid_t pid, char cwd[_POSIX_SYMLINK_MAX]) {
-  char cwd_symlink[PATH_MAX];
+  char cwd_symlink[PROCFS_MAX_CWD];
 
   sprintf(cwd_symlink, "/proc/%d/cwd", pid);
 

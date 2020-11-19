@@ -4,9 +4,6 @@
 #include <limits.h>
 #include <unistd.h>
 
-// todo: better macros for procfs file names to save space
-//    (ex) cmdline len("/proc/") + len("/cmdline") + max length of pid
-
 /**
  * Read the command line arguments for the given pid.
  *
@@ -17,13 +14,13 @@
 int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]);
 
 /**
- * Read the owner of the given pid.
+ * Read the login name of the pid owner.
  *
  * @param pid The target pid.
- * @param user THe address where the owner login name will be stored.
+ * @param login THe address where the owner login name will be stored.
  * @return The number of bytes read into user, or -1 on error.
  */
-int read_user(pid_t pid, char user[LOGIN_NAME_MAX]);
+int read_login(pid_t pid, char login[LOGIN_NAME_MAX]);
 
 /**
  * Resolve the current working directory (cwd) of the given pid.

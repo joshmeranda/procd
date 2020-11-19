@@ -62,7 +62,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
     syslog(LOG_DEBUG, "Could not determine the command for pid '%d'", pid);
   }
 
-  if (read_user(pid, user) == -1) {
+  if (read_login(pid, user) == -1) {
     syslog(LOG_ERR, "Could not determine the user for pid '%d'", pid);
   }
 
