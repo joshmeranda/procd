@@ -28,28 +28,24 @@ int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   return n;
 }
 
-int read_user(pid_t pid, char user[LOGIN_NAME_MAX]) { /* todo: Not yet implemented */
-  // todo: grep  /proc/[pid]/status
-  //   Real, effective, saved set, and filesystem UIDs (GIDs).
-  //   (ex) Uid:    1000    1000    1000    1000
-
-  char loginuid_path[PATH_MAX], status_path[PATH_MAX];
+int read_user(pid_t pid, char user[LOGIN_NAME_MAX]) {
+  char loginuid_path[PATH_MAX];
 
   sprintf(loginuid_path, "/proc/%d/loginuid", pid);
-  sprintf(status_path, "/proc/%d/status", pid);
 
-  if (access(loginuid_path, R_OK) == 0) {
-    FILE *stream = fopen(loginuid_path, "r");
-    int uid;
-    struct passwd *uid_passwd;
+  FILE *stream = fopen(loginuid_path, "r");
 
-    fscanf(stream, "%d\n", &uid);
-
-    uid_passwd = getpwuid(uid);
-    strcpy(user, uid_passwd->pw_name);
-  } else {
+  if (stream == NULL) {
     return -1;
   }
+
+  int uid;
+  struct passwd *uid_passwd;
+
+  fscanf(stream, "%d\n", &uid);
+
+  uid_passwd = getpwuid(uid);
+  strcpy(user, uid_passwd->pw_name);
 
   return 0;
 }
