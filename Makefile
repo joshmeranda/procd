@@ -1,5 +1,5 @@
 # compiler info
-CC:=cc
+CC:=gcc
 CFLAGS:=-Wall
 LFLAGS:=-Iinclude
 
@@ -9,22 +9,22 @@ ifdef debug
 endif
 
 # generic common names
-PROG_NAME=procd
-UNIT_NAME=${PROG_NAME}.service
+PROG_NAME:=procd
+UNIT_NAME:=${PROG_NAME}.service
 
 # system installation destinations
-INSTALL_DIR=/usr/bin
-INSTALL_BIN=${INSTALL_DIR}/${PROG_NAME}
+INSTALL_DIR:=/usr/bin
+INSTALL_BIN:=${INSTALL_DIR}/${PROG_NAME}
 
-SERVICE_INSTALL=/etc/systemd/system
-SERVICE_INSTALL_UNIT=${SERVICE_INSTALL}/${UNIT_NAME}
+SERVICE_INSTALL:=/etc/systemd/system
+SERVICE_INSTALL_UNIT:=${SERVICE_INSTALL}/${UNIT_NAME}
 
 # local targets
-BIN=bin/${PROG_NAME}
+BIN:=bin/${PROG_NAME}
 
 # packaging info / targets
-VERSION=0.0.1-rc
-TAR=procd-${VERSION}.gz.tar
+VERSION:=0.0.1-rc
+TAR:=procd-${VERSION}.gz.tar
 
 src:=$(addprefix src/, $(shell ls src))
 obj:=$(src:.c=.o)
