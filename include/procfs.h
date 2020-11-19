@@ -4,6 +4,9 @@
 #include <limits.h>
 #include <unistd.h>
 
+// todo: better macros for procfs file names to save space
+//    (ex) cmdline len("/proc/") + len("/cmdline") + max length of pid
+
 /**
  * Read the command line arguments for the given pid.
  *

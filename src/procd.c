@@ -33,9 +33,6 @@
 static int received = 0;
 static void handler(int _) { received = 1; }
 
-// todo: show what user launched the process
-//   would require iterating over /proc/<pid>/environ to find the value for USER
-// todo: partition big boi into smaller bois
 static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   // retrieve the pid of the process events
   pid_t pid;
@@ -52,10 +49,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
       return; // do nothing for other process events
   }
 
-  char cmdline[_POSIX_ARG_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX];
-
-  memset(cmdline, 0, sizeof(cmdline));
-  memset(proc_cwd_real, 0, sizeof(proc_cwd_real));
+  char cmdline[_POSIX_ARG_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX], user[LOGIN_NAME_MAX];
 
   // find the path to the process's cwd
   // if the cwd cannot be determined no further actions can be taken
@@ -68,6 +62,10 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
     syslog(LOG_DEBUG, "Could not determine the command for pid '%d'", pid);
   }
 
+  if (read_user(pid, user) == -1) {
+    syslog(LOG_ERR, "Could not determine the user for pid '%d'", pid);
+  }
+
   // kill the target process if it matches a deny or does not match an allow rule
   int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
 
@@ -75,7 +73,7 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
       || conf->strategy == DENY && path_match == 0) {
 
     kill(pid, SIGKILL);
-    syslog(LOG_WARNING, "Killed process %d started from '%s': '%s'", pid, proc_cwd_real, cmdline);
+    syslog(LOG_WARNING, "Killed process %d started from '%s' by '%s': '%s'", pid, proc_cwd_real, user, cmdline);
   }
 }
 

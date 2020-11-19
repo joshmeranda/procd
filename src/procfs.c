@@ -1,12 +1,11 @@
 #include <string.h>
 #include <stdio.h>
+#include <pwd.h>
 
 #include "procfs.h"
 
 int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   char cmdline_path[PATH_MAX];
-
-  memset(cmdline_path, 0, PATH_MAX);
 
   sprintf(cmdline_path, "/proc/%d/cmdline", pid);
 
@@ -29,12 +28,35 @@ int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   return n;
 }
 
-int read_user(pid_t pid, char user[LOGIN_NAME_MAX]) { /* todo: Not yet implemented */ return -1; }
+int read_user(pid_t pid, char user[LOGIN_NAME_MAX]) { /* todo: Not yet implemented */
+  // todo: grep  /proc/[pid]/status
+  //   Real, effective, saved set, and filesystem UIDs (GIDs).
+  //   (ex) Uid:    1000    1000    1000    1000
+
+  char loginuid_path[PATH_MAX], status_path[PATH_MAX];
+
+  sprintf(loginuid_path, "/proc/%d/loginuid", pid);
+  sprintf(status_path, "/proc/%d/status", pid);
+
+  if (access(loginuid_path, R_OK) == 0) {
+    FILE *stream = fopen(loginuid_path, "r");
+    int uid;
+    struct passwd *uid_passwd;
+
+    fscanf(stream, "%d\n", &uid);
+
+    uid_passwd = getpwuid(uid);
+    strcpy(user, uid_passwd->pw_name);
+  } else {
+    return -1;
+  }
+
+  return 0;
+}
 
 int read_cwd(pid_t pid, char cwd[_POSIX_SYMLINK_MAX]) {
   char cwd_symlink[PATH_MAX];
 
-  memset(cwd_symlink, 0, PATH_MAX);
   sprintf(cwd_symlink, "/proc/%d/cwd", pid);
 
   return readlink(cwd_symlink, cwd, _POSIX_SYMLINK_MAX);
