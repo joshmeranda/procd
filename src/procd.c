@@ -226,17 +226,21 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
   return retval;
 }
 
-// todo: warn of bad config
-// todo: default values?
+
+/**
+ * Parse the file t the given path for the service configuration values.
+ *
+ * todo: default config values?
+ * todo: warn on bad value or malformed config
+ *
+ * @param conf The pointer to the struct where to store config values.
+ * @param path The path to the file to parse, assumes the files already exists.
+ * @return 0 on successful parsing, -1 otherwise.
+ */
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
 
   // todo: give reason why the config could not be read
-  if (stream == NULL) {
-    fprintf(stderr, "Could not open file located at '%s'\n", path);
-    return -1;
-  }
-
   char *line = NULL;
   size_t len = 0;
   int retval = 0;
