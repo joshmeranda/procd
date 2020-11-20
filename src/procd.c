@@ -3,7 +3,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <regex.h>
-#include <syslog.h>
 
 #include <linux/cn_proc.h>
 #include <linux/connector.h>
@@ -26,7 +25,6 @@
 
 #define max(x,y) ((y)<(x)?(x):(y))
 #define BUFF_SIZE (max(max(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE), 1024))
-
 
 #define no_match_regex(regex) (regcomp(regex, "$^", REG_EXTENDED))
 
@@ -68,14 +66,14 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
 
   // find the command line arguments that spawned the process if possible
   if (read_cmdline(pid, cmdline) == -1) {
-    syslog(LOG_DEBUG, "Could not determine the command for pid '%d'", pid);
+    printf("Could not determine the command for pid '%d'\n", pid);
   }
 
   if (read_login(pid, login) == -1) {
-    syslog(LOG_ERR, "Could not determine the login for pid '%d'", pid);
+    printf("Could not determine the login for pid '%d'\n", pid);
   }
 
-  // do nothing for ignored users;
+  // do nothing for ignored users
   if (regexec(conf->path_regex, login, 0, NULL, 0) == 0) return;
 
   // kill the target process if it matches a deny or does not match an allow rule
@@ -88,11 +86,13 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
     switch (conf->policy) {
       case KILL:
         kill(pid, SIGKILL);
+        printf("Killed process %d started from '%s' by '%s': '%s'\n", pid, proc_cwd_real, login, cmdline);
+        break;
       case WARN:
-        syslog(LOG_WARNING, "Found process %d started from '%s' by '%s': '%s'", pid, proc_cwd_real, login, cmdline);
+        printf("Found process %d started from '%s' by '%s': '%s'\n", pid, proc_cwd_real, login, cmdline);
         break;
       case DRY:
-        printf("Found process %d started from '%s' by '%s': '%s'", pid, proc_cwd_real, login, cmdline);
+        printf("Found process %d started from '%s' by '%s': '%s'\n", pid, proc_cwd_real, login, cmdline);
     }
   }
 }
@@ -108,7 +108,7 @@ static int netlink_sock() {
   int sock_nl = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
 
   if (sock_nl == -1) {
-    syslog(LOG_CRIT, "Error creating local NETLINK socket");
+    printf("Error creating local NETLINK socket\n");
     return -1;
   }
 
@@ -121,7 +121,7 @@ static int netlink_sock() {
 
   // bind the socket to the netlink address
   if (bind(sock_nl, (struct sockaddr *)&addr_nl, sizeof(addr_nl)) == -1) {
-    syslog(LOG_CRIT, "Error binding to NETLINK socket");
+    printf("Error binding to NETLINK socket\n");
     close(sock_nl);
     return -1;
   }
@@ -140,12 +140,9 @@ int init_service(const conf_t *conf) {
 
   char buff[BUFF_SIZE];
 
-  openlog("procd", 0, LOG_AUTHPRIV);
-
   // kernel connector access requires root level permissions
   if (getuid() != 0) {
-    syslog(LOG_CRIT, "Only root can start/stop the fork connector\n");
-    closelog();
+    printf("Only root can start/stop the fork connector\n");
     return 1;
   }
 
@@ -153,17 +150,11 @@ int init_service(const conf_t *conf) {
   setvbuf(stdout, NULL, _IONBF, 0);
 
   if ((nl_sock = netlink_sock()) == -1) {
-    closelog();
     return 1;
   }
 
   // handle any abort signals which may occur in the loop
   signal(SIGINT, handler);
-  signal(SIGILL, handler);
-  signal(SIGABRT, handler);
-  signal(SIGFPE, handler);
-  signal(SIGSEGV, handler);
-  signal(SIGTERM, handler);
 
   // set up address for the process connector in the kernel space
   nl_kern_addr.nl_family = AF_NETLINK;
@@ -205,7 +196,6 @@ int init_service(const conf_t *conf) {
     }
   }
 
-  closelog();
   close(nl_sock);
 
   return retval;
@@ -245,7 +235,7 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
       *c = '|';
   }
 
-  int retval = regcomp(regex, pattern, REG_EXTENDED) == 0 ? 0 : -1;
+  int retval = regcomp(regex, pattern, REG_EXTENDED | REG_NOSUB) == 0 ? 0 : -1;
 
   free(pattern);
   return retval;
@@ -263,7 +253,6 @@ int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
 
   char *line = NULL;
-  size_t len = 0;
   int retval = 0;
 
   // todo: make this config parsing far more dynamic
@@ -280,7 +269,7 @@ int parse_conf(conf_t *conf, char *path) {
 
   int lineno = 1;
 
-  while (getline(&line, &len, stream) != -1) {
+  while (getline(&line, 0, stream) != -1) {
     // skip comments and empty lines
     if (line[0] == '#' || line[0] == '\n') continue;
 
@@ -341,9 +330,10 @@ int parse_conf(conf_t *conf, char *path) {
     }
 
     lineno++;
-  }
 
-  free(line);
+    free(line);
+    line = NULL;
+  }
 
   // initialize still NULL regex
   if (!set_path) no_match_regex(conf->path_regex);

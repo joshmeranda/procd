@@ -1,16 +1,17 @@
 #include <string.h>
 #include <stdio.h>
 #include <pwd.h>
+#include <malloc.h>
 
 #include "procfs.h"
 
 /**
  * Macros for file sizes of specific procfs files, assumes max pid of 2^22 (4194304)
- * for 7 bytes and will include the null byte.
+* for 7 characters and will include the null byte.
  */
-#define PROCFS_MAX_CMDLINE 22       // "/proc/[pid]/cmdline"
-#define PROCFS_MAX_LOGINUID 23      // "/proc/[pid]]/loginuid"
-#define PROCFS_MAX_CWD 18           // "/proc/[pid]]/cwd"
+#define PROCFS_MAX_CMDLINE 20       // "/proc/[pid]/cmdline"
+#define PROCFS_MAX_ENVIRON 20       // "/proc/[pid]/environ"
+#define PROCFS_MAX_CWD     16       // "/proc/[pid]/cwd"
 
 int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   char cmdline_path[PROCFS_MAX_CMDLINE];
@@ -36,25 +37,35 @@ int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   return n;
 }
 
-// todo: not good
-int read_login(pid_t pid, char user[LOGIN_NAME_MAX]) {
-  char loginuid_path[PROCFS_MAX_LOGINUID];
+int read_login(pid_t pid, char login[LOGIN_NAME_MAX]) {
+  char environ_path[PROCFS_MAX_ENVIRON];
 
-  sprintf(loginuid_path, "/proc/%d/loginuid", pid);
+  sprintf(environ_path, "/proc/%d/environ", pid);
 
-  FILE *stream = fopen(loginuid_path, "r");
+  FILE *stream = fopen(environ_path, "r");
 
-  if (stream == NULL) {
+  if (stream == NULL)
     return -1;
+
+  char *environ = malloc(4096);
+  size_t len = 4096;
+
+  char key[1000], val[1000]; // todo: find better values
+
+  while(getdelim(&environ, &len, '\0', stream) != -1) {
+    memset(key, 0, sizeof(key));
+    memset(val, 0, sizeof(val));
+
+    sscanf(environ, "%[^=]=%s", key, val);
+
+    if (strcmp("USER", key) == 0) {
+      strcpy(login, val);
+      break;
+    }
   }
+  free(environ);
 
-  int uid;
-  struct passwd *uid_passwd;
-
-  fscanf(stream, "%d\n", &uid);
-
-  uid_passwd = getpwuid(uid);
-  strcpy(user, uid_passwd->pw_name);
+  fclose(stream);
 
   return 0;
 }

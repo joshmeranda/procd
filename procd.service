@@ -6,3 +6,5 @@ ConditionPathExists=/etc/procd.conf
 Type=exec
 Restart=always
 ExecStart=/usr/bin/procd
+StandardOutput=journal
+StandardError=journal
