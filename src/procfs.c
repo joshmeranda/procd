@@ -64,5 +64,10 @@ int read_cwd(pid_t pid, char cwd[_POSIX_SYMLINK_MAX]) {
 
   sprintf(cwd_symlink, "/proc/%d/cwd", pid);
 
-  return readlink(cwd_symlink, cwd, _POSIX_SYMLINK_MAX);
+  int n = readlink(cwd_symlink, cwd, _POSIX_SYMLINK_MAX);
+
+  // null terminate the read path
+  cwd[n] = 0;
+
+  return n;
 }
