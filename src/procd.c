@@ -255,8 +255,7 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
  */
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
-
-  // todo: specify line number for configuration parse issues
+  
   char *line = NULL;
   size_t len = 0;
   int retval = 0;
@@ -272,6 +271,8 @@ int parse_conf(conf_t *conf, char *path) {
 
   // flags for specifying if each pattern line was found
   int set_path = 0, set_login = 0;
+
+  int lineno = 1;
 
   while (getline(&line, &len, stream) != -1) {
     // skip comments and empty lines
@@ -289,7 +290,7 @@ int parse_conf(conf_t *conf, char *path) {
       else if (strcmp("deny", val) == 0)
         conf->strategy = DENY;
       else {
-        fprintf(stderr, "Unknown strategy value '%s'\n", val);
+        fprintf(stderr, "line %d: Unknown strategy value '%s'\n", lineno, val);
         retval = -1;
       }
 
@@ -298,7 +299,7 @@ int parse_conf(conf_t *conf, char *path) {
       int e;
 
       if ((e = merge_patterns(conf->path_regex, val)) != 0) {
-        fprintf(stderr, "Regex compilation for 'patterns' failed with error code '%d'\n", e);
+        fprintf(stderr, "line %d: Regex compilation failed\n", lineno);
         retval = -1;
       }
       set_path = 1;
@@ -311,7 +312,7 @@ int parse_conf(conf_t *conf, char *path) {
       } else if (strcmp("DRY", val) == 0) {
         conf->policy = DRY;
       } else {
-        fprintf(stderr, "Unknown policy value '%s'\n", val);\
+        fprintf(stderr, "line %d: Unknown policy value '%s'\n", lineno, val);\
         return -1;
       }
 
@@ -319,19 +320,21 @@ int parse_conf(conf_t *conf, char *path) {
       int e;
 
       if ((e = merge_patterns(conf->ignore_login_regex, val)) != 0) {
-        fprintf(stderr, "Regex compilation for 'ignore_login_regex' failed with error code '%d'\n", e);
+        fprintf(stderr, "line %d: Regex compilation failed\n", lineno);
         retval = -1;
       }
       set_login = 1;
 
     } else {
-      fprintf(stderr, "Unknown key '%s\n'", key);
+      fprintf(stderr, "line %d: Unknown key '%s\n'", lineno, key);
       retval = -1;
     }
 
     if (retval != 0) {
       break;
     }
+
+    lineno++;
   }
 
   free(line);
