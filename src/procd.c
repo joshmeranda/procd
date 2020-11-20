@@ -70,10 +70,10 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   }
 
   // do nothing for ignored users;
-  if (regexec(conf->pattern, login, 0, NULL, 0) == 0) return;
+  if (regexec(conf->path_regex, login, 0, NULL, 0) == 0) return;
 
   // kill the target process if it matches a deny or does not match an allow rule
-  int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
+  int path_match = regexec(conf->path_regex, proc_cwd_real, 0, NULL, 0);
 
   if (conf->strategy == ALLOW && path_match != 0
       || conf->strategy == DENY && path_match == 0) {
@@ -292,11 +292,11 @@ int parse_conf(conf_t *conf, char *path) {
         retval = -1;
       }
 
-    } else if (strcmp("patterns", key) == 0) {
+    } else if (strcmp("paths", key) == 0) {
       // merge and compile regex
       int e;
 
-      if ((e = merge_patterns(conf->pattern, val)) != 0) {
+      if ((e = merge_patterns(conf->path_regex, val)) != 0) {
         fprintf(stderr, "Regex compilation for 'patterns' failed with error code '%d'\n", e);
         retval = -1;
       }
@@ -313,11 +313,11 @@ int parse_conf(conf_t *conf, char *path) {
         return -1;
       }
 
-    } else if (strcmp("ignore_login", key) == 0) {
+    } else if (strcmp("ignore_logins", key) == 0) {
       int e;
 
-      if ((e = merge_patterns(conf->ignore_login, val)) != 0) {
-        fprintf(stderr, "Regex compilation for 'ignore_login' failed with error code '%d'\n", e);
+      if ((e = merge_patterns(conf->ignore_login_regex, val)) != 0) {
+        fprintf(stderr, "Regex compilation for 'ignore_login_regex' failed with error code '%d'\n", e);
         retval = -1;
       }
 
@@ -334,8 +334,8 @@ int parse_conf(conf_t *conf, char *path) {
   free(line);
 
   // initialize still NULL regex
-//  if (conf->pattern == NULL) no_match_regex(conf->pattern);
-//  if (conf->ignore_login == NULL) no_match_regex(conf->ignore_login);
+//  if (conf->path_regex == NULL) no_match_regex(conf->path_regex);
+//  if (conf->ignore_login_regex == NULL) no_match_regex(conf->ignore_login_regex);
 
   fclose(stream);
 

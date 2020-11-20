@@ -23,13 +23,13 @@ enum {
 } typedef policy_t;
 
 struct {
-  regex_t *pattern;
+  regex_t *path_regex;
+
+  regex_t *ignore_login_regex;
 
   strategy_t strategy;
 
   policy_t policy;
-
-  regex_t *ignore_login;
 
 } typedef conf_t;
 

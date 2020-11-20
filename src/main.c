@@ -31,8 +31,6 @@ int main(int argc, char **argv) {
 
         strcpy(config_path, optarg);
         break;
-      case 'd':
-
       default:
         fprintf(stderr, "%s", USAGE);
         return 1;
@@ -45,8 +43,8 @@ int main(int argc, char **argv) {
   }
 
   conf_t conf;
-  conf.pattern = malloc(sizeof(regex_t));
-  conf.ignore_login = malloc(sizeof(regex_t));
+  conf.path_regex = malloc(sizeof(regex_t));
+  conf.ignore_login_regex = malloc(sizeof(regex_t));
 
   if (parse_conf(&conf, config_path) != 0) {
     fprintf(stderr, "Error parsing config");
@@ -55,11 +53,11 @@ int main(int argc, char **argv) {
 
   int retval = init_service(&conf);
 
-  regfree(conf.pattern);
-  free(conf.pattern);
+  regfree(conf.path_regex);
+  free(conf.path_regex);
 
-  regfree(conf.ignore_login);
-  free(conf.ignore_login);
+  regfree(conf.ignore_login_regex);
+  free(conf.ignore_login_regex);
 
   return retval;
 }
