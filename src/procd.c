@@ -36,6 +36,12 @@
 static int received = 0;
 static void handler(int _) { received = 1; }
 
+/**
+ * Handle process events received from the connector.
+ *
+ * @param cn_hdr The event message received from the connector.
+ * @param conf The configuration specifying how the handler should behave.
+ */
 static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   // retrieve the pid of the process events
   pid_t pid;
@@ -255,14 +261,14 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
  */
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
-  
+
   char *line = NULL;
   size_t len = 0;
   int retval = 0;
 
   // todo: make this config parsing far more dynamic
-  //     leaving very minimal until real functionality is completed
-  //     allow inline comments & multiline assignment & ...
+  //   leaving very minimal until real functionality is completed
+  //   allow inline comments & multiline assignment & ...
   char key[100], val[100];
 
   // set defaults where necessary
