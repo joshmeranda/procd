@@ -36,6 +36,7 @@ int read_cmdline(pid_t pid, char cmdline[_POSIX_ARG_MAX]) {
   return n;
 }
 
+// todo: not good
 int read_login(pid_t pid, char user[LOGIN_NAME_MAX]) {
   char loginuid_path[PROCFS_MAX_LOGINUID];
 

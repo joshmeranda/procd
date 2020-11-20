@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
         printf("v0.0.1-rc\n");
         return 0;
       case 'f':
-        if (access(config_path, R_OK) != 0) {
+        if (access(optarg, R_OK) != 0) {
           printf("Could not access config file at '%s'\n", optarg);
           return 1;
         }

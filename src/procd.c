@@ -249,8 +249,6 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
 /**
  * Parse the file t the given path for the service configuration values.
  *
- * todo: default config values
- *
  * @param conf The pointer to the struct where to store config values.
  * @param path The path to the file to parse, assumes the files already exists.
  * @return 0 on successful parsing, -1 otherwise.
@@ -271,6 +269,9 @@ int parse_conf(conf_t *conf, char *path) {
   // set defaults where necessary
   conf->strategy = ALLOW;
   conf->policy = KILL;
+
+  // flags for specifying if each pattern line was found
+  int set_path = 0, set_login = 0;
 
   while (getline(&line, &len, stream) != -1) {
     // skip comments and empty lines
@@ -300,6 +301,7 @@ int parse_conf(conf_t *conf, char *path) {
         fprintf(stderr, "Regex compilation for 'patterns' failed with error code '%d'\n", e);
         retval = -1;
       }
+      set_path = 1;
 
     } else if (strcmp("policy", key) == 0) {
       if (strcmp("kill", val) == 0) {
@@ -320,6 +322,7 @@ int parse_conf(conf_t *conf, char *path) {
         fprintf(stderr, "Regex compilation for 'ignore_login_regex' failed with error code '%d'\n", e);
         retval = -1;
       }
+      set_login = 1;
 
     } else {
       fprintf(stderr, "Unknown key '%s\n'", key);
@@ -334,8 +337,8 @@ int parse_conf(conf_t *conf, char *path) {
   free(line);
 
   // initialize still NULL regex
-//  if (conf->path_regex == NULL) no_match_regex(conf->path_regex);
-//  if (conf->ignore_login_regex == NULL) no_match_regex(conf->ignore_login_regex);
+  if (!set_path) no_match_regex(conf->path_regex);
+  if (!set_login) no_match_regex(conf->ignore_login_regex);
 
   fclose(stream);
 
