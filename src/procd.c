@@ -27,6 +27,9 @@
 #define max(x,y) ((y)<(x)?(x):(y))
 #define BUFF_SIZE (max(max(SEND_MESSAGE_SIZE, RECV_MESSAGE_SIZE), 1024))
 
+
+#define no_match_regex(regex) (regcomp(regex, "$^", REG_EXTENDED))
+
 /**
  * Handles any interrupts received in the init_service loop.
  */
@@ -46,10 +49,10 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
       pid = proc_event->event_data.exec.process_pid;
       break;
     default:
-      return; // do nothing for other process events
+      return; // do nothing for other process event types
   }
 
-  char cmdline[_POSIX_ARG_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX], user[LOGIN_NAME_MAX];
+  char cmdline[_POSIX_ARG_MAX], proc_cwd_real[_POSIX_SYMLINK_MAX], login[LOGIN_NAME_MAX];
 
   // find the path to the process's cwd
   // if the cwd cannot be determined no further actions can be taken
@@ -62,9 +65,12 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
     syslog(LOG_DEBUG, "Could not determine the command for pid '%d'", pid);
   }
 
-  if (read_login(pid, user) == -1) {
-    syslog(LOG_ERR, "Could not determine the user for pid '%d'", pid);
+  if (read_login(pid, login) == -1) {
+    syslog(LOG_ERR, "Could not determine the login for pid '%d'", pid);
   }
+
+  // do nothing for ignored users;
+  if (regexec(conf->pattern, login, 0, NULL, 0) == 0) return;
 
   // kill the target process if it matches a deny or does not match an allow rule
   int path_match = regexec(conf->pattern, proc_cwd_real, 0, NULL, 0);
@@ -72,8 +78,16 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   if (conf->strategy == ALLOW && path_match != 0
       || conf->strategy == DENY && path_match == 0) {
 
-    kill(pid, SIGKILL);
-    syslog(LOG_WARNING, "Killed process %d started from '%s' by '%s': '%s'", pid, proc_cwd_real, user, cmdline);
+    // handle matched process according to given policy
+    switch (conf->policy) {
+      case KILL:
+        kill(pid, SIGKILL);
+      case WARN:
+        syslog(LOG_WARNING, "Found process %d started from '%s' by '%s': '%s'", pid, proc_cwd_real, login, cmdline);
+        break;
+      case DRY:
+        printf("Found process %d started from '%s' by '%s': '%s'", pid, proc_cwd_real, login, cmdline);
+    }
   }
 }
 
@@ -195,6 +209,9 @@ int init_service(const conf_t *conf) {
  * Build a single regex pattern_line out of a space delimited string of separate
  * patterns.
  *
+ * If the given pattern_line is empty (strlen(pattern_line) == 0) the compiled
+ * regex will match nothing.
+ *
  * Currently the patterns are merged by simply replacing all spaces with a pipe.
  * This presents the clear flaw that paths cannot contain spaces, and if they do
  * the patterns will not match correctly. That being said, if you are using
@@ -206,7 +223,9 @@ int init_service(const conf_t *conf) {
  *     merge_patterns("/path with spaces") -> /path|with|spaces
  *
  * todo: double spaces would result in matching an empty string path
+ * todo: handle paths with spaces
  *
+ * @param regex The pointer to the struct to contain the compiled regex.
  * @param pattern_line The string with space separated regex patterns.
  * @return 0 if successful, -1 if not.
  */
@@ -230,8 +249,7 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
 /**
  * Parse the file t the given path for the service configuration values.
  *
- * todo: default config values?
- * todo: warn on bad value or malformed config
+ * todo: default config values
  *
  * @param conf The pointer to the struct where to store config values.
  * @param path The path to the file to parse, assumes the files already exists.
@@ -240,7 +258,7 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
 
-  // todo: give reason why the config could not be read
+  // todo: specify line number for configuration parse issues
   char *line = NULL;
   size_t len = 0;
   int retval = 0;
@@ -249,6 +267,10 @@ int parse_conf(conf_t *conf, char *path) {
   //     leaving very minimal until real functionality is completed
   //     allow inline comments & multiline assignment & ...
   char key[100], val[100];
+
+  // set defaults where necessary
+  conf->strategy = ALLOW;
+  conf->policy = KILL;
 
   while (getline(&line, &len, stream) != -1) {
     // skip comments and empty lines
@@ -266,7 +288,7 @@ int parse_conf(conf_t *conf, char *path) {
       else if (strcmp("deny", val) == 0)
         conf->strategy = DENY;
       else {
-        fprintf(stderr, "Unknown strategy value '%s'", val);
+        fprintf(stderr, "Unknown strategy value '%s'\n", val);
         retval = -1;
       }
 
@@ -275,12 +297,32 @@ int parse_conf(conf_t *conf, char *path) {
       int e;
 
       if ((e = merge_patterns(conf->pattern, val)) != 0) {
-        fprintf(stderr, "Regex compilation failed with error code %d", e);
+        fprintf(stderr, "Regex compilation for 'patterns' failed with error code '%d'\n", e);
+        retval = -1;
+      }
+
+    } else if (strcmp("policy", key) == 0) {
+      if (strcmp("kill", val) == 0) {
+        conf->policy = KILL;
+      } else if (strcmp("warn", val) == 0) {
+        conf->policy = WARN;
+      } else if (strcmp("DRY", val) == 0) {
+        conf->policy = DRY;
+      } else {
+        fprintf(stderr, "Unknown policy value '%s'\n", val);\
+        return -1;
+      }
+
+    } else if (strcmp("ignore_login", key) == 0) {
+      int e;
+
+      if ((e = merge_patterns(conf->ignore_login, val)) != 0) {
+        fprintf(stderr, "Regex compilation for 'ignore_login' failed with error code '%d'\n", e);
         retval = -1;
       }
 
     } else {
-      fprintf(stderr, "Unknown key '%s'", key);
+      fprintf(stderr, "Unknown key '%s\n'", key);
       retval = -1;
     }
 
@@ -289,8 +331,13 @@ int parse_conf(conf_t *conf, char *path) {
     }
   }
 
-  fclose(stream);
   free(line);
+
+  // initialize still NULL regex
+//  if (conf->pattern == NULL) no_match_regex(conf->pattern);
+//  if (conf->ignore_login == NULL) no_match_regex(conf->ignore_login);
+
+  fclose(stream);
 
   return retval;
 }

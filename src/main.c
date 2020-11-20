@@ -7,7 +7,7 @@
 
 #include "procd.h"
 
-const char *USAGE = "Usage: procd [-hvf]\n";
+const char *USAGE = "Usage: procd [-hvdf:]\n";
 
 int main(int argc, char **argv) {
   int opt;
@@ -31,6 +31,8 @@ int main(int argc, char **argv) {
 
         strcpy(config_path, optarg);
         break;
+      case 'd':
+
       default:
         fprintf(stderr, "%s", USAGE);
         return 1;
@@ -44,6 +46,7 @@ int main(int argc, char **argv) {
 
   conf_t conf;
   conf.pattern = malloc(sizeof(regex_t));
+  conf.ignore_login = malloc(sizeof(regex_t));
 
   if (parse_conf(&conf, config_path) != 0) {
     fprintf(stderr, "Error parsing config");
@@ -53,6 +56,10 @@ int main(int argc, char **argv) {
   int retval = init_service(&conf);
 
   regfree(conf.pattern);
+  free(conf.pattern);
+
+  regfree(conf.ignore_login);
+  free(conf.ignore_login);
 
   return retval;
 }

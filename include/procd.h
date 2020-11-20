@@ -4,19 +4,33 @@
 #include <regex.h>
 
 /**
- * Path match strategy.
+ * Path specification strategies.
  */
 enum {
-  ALLOW, /* white listing */
-  DENY   /* black listing */
+  ALLOW, // white listing
+  DENY   // black listing
 } typedef strategy_t;
+
+/**
+ * Specifies the policy for matched paths.
+ * todo: redirect output over using syslog (would remove the need for DRY)
+ *   https://stackoverflow.com/questions/37585758/how-to-redirect-output-of-systemd-service-to-a-file
+ */
+enum {
+  KILL,     // kill matched processes and log
+  WARN,     // only log matched processes
+  DRY       // only print matched processes to stdout (good for testing)
+} typedef policy_t;
 
 struct {
   regex_t *pattern;
 
   strategy_t strategy;
 
-  FILE *log_file;
+  policy_t policy;
+
+  regex_t *ignore_login;
+
 } typedef conf_t;
 
 /**
