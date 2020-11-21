@@ -252,7 +252,9 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
 int parse_conf(conf_t *conf, char *path) {
   FILE *stream = fopen(path, "r");
 
-  char *line = NULL;
+  char *line = malloc(4096);
+  size_t len = 4096;
+
   int retval = 0;
 
   // todo: make this config parsing far more dynamic
@@ -269,12 +271,9 @@ int parse_conf(conf_t *conf, char *path) {
 
   int lineno = 1;
 
-  while (getline(&line, 0, stream) != -1) {
+  while (getline(&line, &len, stream) != -1) {
     // skip comments and empty lines
     if (line[0] == '#' || line[0] == '\n') continue;
-
-    memset(key, 0, sizeof(key));
-    memset(val, 0, sizeof(val));
 
     sscanf(line, "%s = %[^\n]", key, val);
 
@@ -308,7 +307,7 @@ int parse_conf(conf_t *conf, char *path) {
         conf->policy = DRY;
       } else {
         fprintf(stderr, "line %d: Unknown policy value '%s'\n", lineno, val);\
-        return -1;
+      return -1;
       }
 
     } else if (strcmp("ignore_logins", key) == 0) {
@@ -330,10 +329,8 @@ int parse_conf(conf_t *conf, char *path) {
     }
 
     lineno++;
-
-    free(line);
-    line = NULL;
   }
+  free(line);
 
   // initialize still NULL regex
   if (!set_path) no_match_regex(conf->path_regex);

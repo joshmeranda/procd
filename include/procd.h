@@ -7,8 +7,8 @@
  * Path specification strategies.
  */
 enum {
+  DENY,   // black listing
   ALLOW, // white listing
-  DENY   // black listing
 } typedef strategy_t;
 
 /**
@@ -19,7 +19,7 @@ enum {
 enum {
   KILL,     // kill matched processes and log
   WARN,     // only log matched processes
-  DRY       // only print matched processes to stdout (good for testing)
+  DRY,      // only print matched processes to stdout (good for testing)
 } typedef policy_t;
 
 struct {
