@@ -91,8 +91,6 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
       case WARN:
         printf("Found process %d started from '%s' by '%s': '%s'\n", pid, proc_cwd_real, login, cmdline);
         break;
-      case DRY:
-        printf("Found process %d started from '%s' by '%s': '%s'\n", pid, proc_cwd_real, login, cmdline);
     }
   }
 }
@@ -330,8 +328,6 @@ int parse_conf(conf_t *conf, char *path) {
         conf->policy = KILL;
       } else if (strcmp("warn", val) == 0) {
         conf->policy = WARN;
-      } else if (strcmp("DRY", val) == 0) {
-        conf->policy = DRY;
       } else {
         fprintf(stderr, "line %d: Unknown policy value '%s'\n", lineno, val);\
       return -1;

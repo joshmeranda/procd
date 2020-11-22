@@ -13,13 +13,10 @@ enum {
 
 /**
  * Specifies the policy for matched paths.
- * todo: redirect output over using syslog (would remove the need for DRY)
- *   https://stackoverflow.com/questions/37585758/how-to-redirect-output-of-systemd-service-to-a-file
  */
 enum {
   KILL,     // kill matched processes and log
   WARN,     // only log matched processes
-  DRY,      // only print matched processes to stdout (good for testing)
 } typedef policy_t;
 
 struct {
