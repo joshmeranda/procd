@@ -129,6 +129,30 @@ static int netlink_sock() {
   return sock_nl;
 }
 
+static int cn_listen(int nl_sock) {
+  struct nlmsghdr *nl_hdr;
+  char buff[BUFF_SIZE];
+
+  memset(buff, 0, sizeof(buff));
+
+  nl_hdr = (struct nlmsghdr *)buff;
+
+  // initialize netlink packet header
+  nl_hdr->nlmsg_len = SEND_MESSAGE_LEN;
+  nl_hdr->nlmsg_type = NLMSG_DONE;
+  nl_hdr->nlmsg_flags = 0;
+  nl_hdr->nlmsg_seq = 0;
+  nl_hdr->nlmsg_pid = getpid();
+
+  // send the subscription packet
+  if (send(nl_sock, nl_hdr, nl_hdr->nlmsg_len, 0) != nl_hdr->nlmsg_len) {
+    printf("Failed to start listening to process connector\n");
+    return 1;
+  }
+
+  return 0;
+}
+
 int init_service(const conf_t *conf) {
   int nl_sock, retval = 0;
   size_t recv_len = 0;
@@ -153,7 +177,11 @@ int init_service(const conf_t *conf) {
     return 1;
   }
 
-  // handle any abort signals which may occur in the loop
+  if (cn_listen(nl_sock) == -1) {
+    return 1;
+  }
+
+    // handle any abort signals which may occur in the loop
   signal(SIGINT, handler);
 
   // set up address for the process connector in the kernel space
@@ -240,7 +268,6 @@ static int merge_patterns(regex_t *regex, const char *pattern_line) {
   free(pattern);
   return retval;
 }
-
 
 /**
  * Parse the file t the given path for the service configuration values.
