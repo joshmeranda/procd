@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 
 #include <libnet.h>
+#include <syslog.h>
 
 #include "procd.h"
 #include "procfs.h"
@@ -155,16 +156,16 @@ int init_service(const conf_t *conf) {
   int nl_sock, retval = 0;
   size_t recv_len = 0;
 
-  struct sockaddr_nl nl_kern_addr, nl_src_addr;
+  struct sockaddr_nl nla_kern, nla_src;
   struct cn_msg *cn_hdr;
 
-  socklen_t from_nla_len;
+  socklen_t nl_src_len;
 
   char buff[BUFF_SIZE];
 
   // kernel connector access requires root level permissions
   if (getuid() != 0) {
-    printf("Only root can start/stop the fork connector\n");
+    printf("Only root can start/stop connector\n");
     return 1;
   }
 
@@ -182,22 +183,17 @@ int init_service(const conf_t *conf) {
   // handle any abort signals which may occur in the loop
   signal(SIGINT, handler);
 
-  // set up address for the process connector in the kernel space
-  nl_kern_addr.nl_family = AF_NETLINK;
-  nl_kern_addr.nl_groups = CN_IDX_PROC;
-  nl_kern_addr.nl_pid = 1;
-
   // read process events from kernels
-  for(memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(nl_src_addr)
+  for(memset(buff, 0, sizeof(buff)), nl_src_len = sizeof(nla_src)
       ; received == 0
-      ; memset(buff, 0, sizeof(buff)), from_nla_len = sizeof(nl_src_addr)) {
+      ; memset(buff, 0, sizeof(buff)), nl_src_len = sizeof(nla_src)) {
     struct nlmsghdr *nlh = (struct nlmsghdr*)buff;
 
-    memcpy(&nl_src_addr, &nl_kern_addr, sizeof(nl_src_addr));
+    memcpy(&nla_src, &nla_kern, sizeof(nla_src));
     recv_len = recvfrom(nl_sock, buff, BUFF_SIZE, 0,
-                        (struct sockaddr*)&nl_src_addr, &from_nla_len);
+                        (struct sockaddr*)&nla_src, &nl_src_len);
 
-    if (nl_src_addr.nl_pid != 0)
+    if (nla_src.nl_pid != 0)
       continue;
 
     if (recv_len < 1)
