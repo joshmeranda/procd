@@ -7,7 +7,11 @@
 
 #include "procd.h"
 
-const char *USAGE = "Usage: procd [-hvdf:]\n";
+const char *USAGE = "Monitor and optionally kill or warn of process creation.\n\n"
+                    "Usage: procd [-hvf:]\n"
+                    "  -f [file]    the path to the configuration file to use (defaults to /etc/procd.conf\n"
+                    "  -h           show this help text\n"
+                    "  -v           show version information\n";
 
 int main(int argc, char **argv) {
   int opt;
