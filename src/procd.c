@@ -179,7 +179,7 @@ int init_service(const conf_t *conf) {
     return 1;
   }
 
-    // handle any abort signals which may occur in the loop
+  // handle any abort signals which may occur in the loop
   signal(SIGINT, handler);
 
   // set up address for the process connector in the kernel space
