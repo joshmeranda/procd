@@ -7,7 +7,7 @@
 
 /**
  * Macros for file sizes of specific procfs files, assumes max pid of 2^22 (4194304)
-* for 7 characters and will include the null byte.
+ * for 7 characters and will include the null byte.
  */
 #define PROCFS_MAX_CMDLINE 20       // "/proc/[pid]/cmdline"
 #define PROCFS_MAX_ENVIRON 20       // "/proc/[pid]/environ"

@@ -74,7 +74,9 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   }
 
   // do nothing for ignored users
-  if (regexec(conf->path_regex, login, 0, NULL, 0) == 0) return;
+  if (regexec(conf->ignore_login_regex, login, 0, NULL, 0) == 0) {
+    return;
+  }
 
   // kill the target process if it matches a deny or does not match an allow rule
   int path_match = regexec(conf->path_regex, proc_cwd_real, 0, NULL, 0);
