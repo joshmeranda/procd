@@ -33,7 +33,7 @@ struct {
 /**
  * Initialize the new service.
  *
- * @param conf
+ * @param conf The configuration to define the service behavior.
  * @return 0 if successful, -1 if not.
  */
 int init_service(const conf_t *conf);

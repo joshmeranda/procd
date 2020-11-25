@@ -11,7 +11,6 @@
 #include <sys/socket.h>
 
 #include <libnet.h>
-#include <syslog.h>
 
 #include "procd.h"
 #include "procfs.h"
@@ -128,30 +127,6 @@ static int netlink_sock() {
   return sock_nl;
 }
 
-static int cn_listen(int nl_sock) {
-  struct nlmsghdr *nl_hdr;
-  char buff[BUFF_SIZE];
-
-  memset(buff, 0, sizeof(buff));
-
-  nl_hdr = (struct nlmsghdr *)buff;
-
-  // initialize netlink packet header
-  nl_hdr->nlmsg_len = SEND_MESSAGE_LEN;
-  nl_hdr->nlmsg_type = NLMSG_DONE;
-  nl_hdr->nlmsg_flags = 0;
-  nl_hdr->nlmsg_seq = 0;
-  nl_hdr->nlmsg_pid = getpid();
-
-  // send the subscription packet
-  if (send(nl_sock, nl_hdr, nl_hdr->nlmsg_len, 0) != nl_hdr->nlmsg_len) {
-    printf("Failed to start listening to process connector\n");
-    return 1;
-  }
-
-  return 0;
-}
-
 int init_service(const conf_t *conf) {
   int nl_sock, retval = 0;
   size_t recv_len = 0;
@@ -173,10 +148,6 @@ int init_service(const conf_t *conf) {
   setvbuf(stdout, NULL, _IONBF, 0);
 
   if ((nl_sock = netlink_sock()) == -1) {
-    return 1;
-  }
-
-  if (cn_listen(nl_sock) == -1) {
     return 1;
   }
 
