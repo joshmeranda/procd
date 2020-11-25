@@ -47,23 +47,31 @@ int read_login(pid_t pid, char login[LOGIN_NAME_MAX]) {
   if (stream == NULL)
     return -1;
 
-  char *environ = malloc(4096);
-  size_t len = 4096;
+  char key[5], // looking for "USER" envvar so only need 5 bytes
+       val[LOGIN_NAME_MAX];
 
-  char key[1000], val[1000]; // todo: find better values
+  // no standardized size for each variable other than the max for ALL environment
+  // variables: ~32 kB
+  char *environ = NULL;
+  size_t len = 0;
 
   while(getdelim(&environ, &len, '\0', stream) != -1) {
     memset(key, 0, sizeof(key));
     memset(val, 0, sizeof(val));
 
-    sscanf(environ, "%[^=]=%s", key, val);
+    // only take the first 9 (LOGIN_NAME_MAX) characters for the value
+    sscanf(environ, "%5[^=]=%9s", key, val);
+
+    // free before potential break
+    free(environ);
+    environ = NULL;
+    len = 0;
 
     if (strcmp("USER", key) == 0) {
       strcpy(login, val);
       break;
     }
   }
-  free(environ);
 
   fclose(stream);
 
