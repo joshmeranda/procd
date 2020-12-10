@@ -81,8 +81,8 @@ static void handle_msg (struct cn_msg *cn_hdr, const conf_t *conf) {
   // kill the target process if it matches a deny or does not match an allow rule
   int path_match = regexec(conf->path_regex, proc_cwd_real, 0, NULL, 0);
 
-  if (conf->strategy == ALLOW && path_match != 0
-      || conf->strategy == DENY && path_match == 0) {
+  if ((conf->strategy == ALLOW && path_match != 0)
+      || (conf->strategy == DENY && path_match == 0)) {
 
     // handle matched process according to given policy
     switch (conf->policy) {

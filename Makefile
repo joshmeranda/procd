@@ -1,6 +1,6 @@
 # compiler info
 CC:=gcc
-CFLAGS:=-Wall
+CFLAGS:=-Wall -std=gnu99
 LFLAGS:=-Iinclude
 
 ifdef debug
@@ -38,7 +38,7 @@ all: ${obj}
 	${CC} ${CFLAGS} $^ -o ${BIN}
 
 %.o: %.c
-	${CC} ${LFLAGS} -c $< -o $@
+	${CC} ${CFLAGS} ${LFLAGS} -c $< -o $@
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Package the project for distribution                                        #
